@@ -1,4 +1,4 @@
-name: Auto-Deploy Release to Appetize.io
+name: Auto-Deploy Debug to Appetize.io
 
 on:
   push:
@@ -47,24 +47,24 @@ jobs:
           cd ios
           pod install --repo-update
 
-      # Compiles highly optimized Release bits mapping Simulator architecture rules
+      # 1. Compile cleanly for the Simulator architecture using Debug flags
       - name: Build Unsigned iOS App
         run: |
-          flutter build ios --release --no-codesign --no-tree-shake-icons --simulator
+          flutter build ios --debug --no-codesign --no-tree-shake-icons --simulator
 
-      # Zip the compiled Runner.app directory to match cloud ingest schema
+      # 2. Package the compiled .app folder into a .zip archive for Appetize ingestion
       - name: Package Simulator App Bundle
         run: |
           cd build/ios/iphonesimulator
-          zip -r ../../../app_release_preview.zip Runner.app
+          zip -r ../../../app_debug_preview.zip Runner.app
 
-      # Upload securely via Appetize.io v1 REST API
+      # 3. Securely push the payload package via the Appetize.io REST API
       - name: Push to Appetize.io Cloud API
         id: upload_app
         run: |
-          RESPONSE=$(curl -s -X POST https://api.appetize.io/v1/apps \
+          RESPONSE=$(curl -s -X POST https://appetize.io \
             -H "X-API-KEY: ${{ secrets.APPETIZE_TOKEN }}" \
-            -F "file=@app_release_preview.zip" \
+            -F "file=@app_debug_preview.zip" \
             -F "platform=ios")
           
           # Isolate the unique build identifier string
@@ -76,7 +76,7 @@ jobs:
             exit 1
           fi
           
-          # Build target optimized URL forcing clean UI rendering
+          # Target configuration: Force an iPhone 14 running iOS 15.0 with automated booting
           PREVIEW_URL="https://appetize.io/{PUBLIC_KEY}?device=iphone14&osVersion=15.0&autoplay=true"
           echo "PREVIEW_URL=${PREVIEW_URL}" >> $GITHUB_ENV
           
@@ -85,10 +85,10 @@ jobs:
           echo "${PREVIEW_URL}"
           echo "=========================================================="
 
-      # Print link cleanly straight inside GitHub logs interface
+      # 4. Expose the finalized streaming link straight inside the Actions UI Summary
       - name: Log Live URL to Actions Summary
         run: |
           echo "### 🚀 Live iOS Browser Preview Ready!" >> $GITHUB_STEP_SUMMARY
-          echo "The Release Simulator build was published directly to the cloud." >> $GITHUB_STEP_SUMMARY
+          echo "The Debug Simulator build was compiled and pushed safely to the cloud." >> $GITHUB_STEP_SUMMARY
           echo "Click below to execute and play with your Compass app features without logging in:" >> $GITHUB_STEP_SUMMARY
           echo "[🎯 Open iPhone 14 Streaming Window](${{ env.PREVIEW_URL }})" >> $GITHUB_STEP_SUMMARY
