@@ -1,17 +1,13 @@
-name: Build Unsigned iOS IPA and Create Release
+name: Deploy iOS Browser Preview
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  build-ios:
-    runs-on: macos-14
+  build-and-upload:
+    runs-on: macos-latest # GitHub provides a virtual Mac server for you for free
 
     steps:
       - name: Checkout repository
@@ -45,26 +41,43 @@ jobs:
           sed -i '' "s/^# platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
           sed -i '' "s/^platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
 
-      - name: Install CocoaPods Dependencies
-        run: |
-          cd ios
-          pod install --repo-update
+      # Note: We do NOT run "pod install" manually here; "flutter build" handles it automatically
 
-      - name: Build Unsigned iOS App
+      # 1. Build SPECIFICALLY for the Simulator architecture instead of iphoneos physical hardware
+      - name: Build Flutter iOS Simulator App
         run: |
-          flutter build ios --release --no-codesign --no-tree-shake-icons
+          flutter build ios --simulator --debug --no-tree-shake-icons
 
-      - name: Package into .ipa
+      # 2. Package the Runner.app folder into a .zip file (Appetize Requirement)
+      - name: Package Simulator App Bundle
         run: |
-          mkdir -p build/ios/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/Payload/
-          cd build/ios
-          zip -r deepignite_compass-v0.1.0-ios.ipa Payload
+          cd build/ios/iphonesimulator
+          zip -r ../../../app_preview.zip Runner.app
 
-      - name: Create Release and Upload IPA
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.1.0
-          files: build/ios/deepignite_compass-v0.1.0-ios.ipa
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 3. Upload the ZIP file directly to Appetize.io API
+      - name: Upload to Appetize.io
+        id: upload_app
+        run: |
+          RESPONSE=$(curl -X POST https://appetize.io \
+            -H "X-API-KEY: ${{ secrets.APPETIZE_TOKEN }}" \
+            -F "file=@app_preview.zip" \
+            -F "platform=ios")
+          
+          # Extract the unique public build key from Appetize
+          PUBLIC_KEY=$(echo $RESPONSE | jq -r '.publicKey')
+          
+          # Enforce query parameters for clean performance: iPhone 14 + iOS 15
+          PREVIEW_URL="https://appetize.io{PUBLIC_KEY}?device=iphone14&osVersion=15.0&autoplay=true"
+          echo "PREVIEW_URL=${PREVIEW_URL}" >> $GITHUB_ENV
+          
+          echo "=========================================================="
+          echo "📱 INTERACTIVE PREVIEW LINK:"
+          echo "${PREVIEW_URL}"
+          echo "=========================================================="
+
+      # 4. Print it directly onto your GitHub Actions run summary page
+      - name: Log Preview Link to GitHub Summary
+        run: |
+          echo "### 📱 Live iOS Browser Preview!" >> $GITHUB_STEP_SUMMARY
+          echo "Click the link below to run your app in the browser instantly (No Login Required):" >> $GITHUB_STEP_SUMMARY
+          echo "[Open iPhone 14 Simulator Preview](${{ env.PREVIEW_URL }})" >> $GITHUB_STEP_SUMMARY
