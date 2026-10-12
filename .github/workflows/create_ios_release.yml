@@ -1,4 +1,4 @@
-name: Build iOS Simulator Zip
+name: Build iOS Simulator Release Zip
 
 on:
   push:
@@ -41,21 +41,27 @@ jobs:
           sed -i '' "s/^# platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
           sed -i '' "s/^platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
 
-      # 1. Build SPECIFICALLY for the Simulator architecture
-      - name: Build Flutter iOS Simulator App
+      # Keep your exact CocoaPods step here!
+      - name: Install CocoaPods Dependencies
         run: |
-          flutter build ios --simulator --debug --no-tree-shake-icons
+          cd ios
+          pod install --repo-update
 
-      # 2. Package the Runner.app folder into a .zip file
+      # Keep your exact Flutter build step, just add the "--simulator" flag!
+      - name: Build Unsigned iOS App
+        run: |
+          flutter build ios --release --no-codesign --no-tree-shake-icons --simulator
+
+      # Package the compiled app folder into a .zip file (Appetize requirements)
       - name: Package Simulator App Bundle
         run: |
           cd build/ios/iphonesimulator
-          zip -r ../../../app_preview.zip Runner.app
+          zip -r ../../../app_release_preview.zip Runner.app
 
-      # 3. Save the ZIP file as a downloadable GitHub Artifact (No API token required!)
-      - name: Upload Zip to GitHub Actions
+      # Save the Release ZIP file as a downloadable GitHub Artifact
+      - name: Upload Release Zip to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
-          name: my-ios-simulator-app
-          path: app_preview.zip
-          retention-days: 1 # Automatically deletes from GitHub after 24 hours
+          name: flutter-release-simulator-app
+          path: app_release_preview.zip
+          retention-days: 1
