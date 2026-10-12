@@ -1,4 +1,4 @@
-name: Deploy iOS Browser Preview
+name: Build iOS Simulator Zip
 
 on:
   push:
@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-upload:
-    runs-on: macos-latest # GitHub provides a virtual Mac server for you for free
+  build-and-package:
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -41,43 +41,21 @@ jobs:
           sed -i '' "s/^# platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
           sed -i '' "s/^platform :ios, '.*/platform :ios, '15.0'/" ios/Podfile
 
-      # Note: We do NOT run "pod install" manually here; "flutter build" handles it automatically
-
-      # 1. Build SPECIFICALLY for the Simulator architecture instead of iphoneos physical hardware
+      # 1. Build SPECIFICALLY for the Simulator architecture
       - name: Build Flutter iOS Simulator App
         run: |
           flutter build ios --simulator --debug --no-tree-shake-icons
 
-      # 2. Package the Runner.app folder into a .zip file (Appetize Requirement)
+      # 2. Package the Runner.app folder into a .zip file
       - name: Package Simulator App Bundle
         run: |
           cd build/ios/iphonesimulator
           zip -r ../../../app_preview.zip Runner.app
 
-      # 3. Upload the ZIP file directly to Appetize.io API
-      - name: Upload to Appetize.io
-        id: upload_app
-        run: |
-          RESPONSE=$(curl -X POST https://appetize.io \
-            -H "X-API-KEY: ${{ secrets.APPETIZE_TOKEN }}" \
-            -F "file=@app_preview.zip" \
-            -F "platform=ios")
-          
-          # Extract the unique public build key from Appetize
-          PUBLIC_KEY=$(echo $RESPONSE | jq -r '.publicKey')
-          
-          # Enforce query parameters for clean performance: iPhone 14 + iOS 15
-          PREVIEW_URL="https://appetize.io{PUBLIC_KEY}?device=iphone14&osVersion=15.0&autoplay=true"
-          echo "PREVIEW_URL=${PREVIEW_URL}" >> $GITHUB_ENV
-          
-          echo "=========================================================="
-          echo "📱 INTERACTIVE PREVIEW LINK:"
-          echo "${PREVIEW_URL}"
-          echo "=========================================================="
-
-      # 4. Print it directly onto your GitHub Actions run summary page
-      - name: Log Preview Link to GitHub Summary
-        run: |
-          echo "### 📱 Live iOS Browser Preview!" >> $GITHUB_STEP_SUMMARY
-          echo "Click the link below to run your app in the browser instantly (No Login Required):" >> $GITHUB_STEP_SUMMARY
-          echo "[Open iPhone 14 Simulator Preview](${{ env.PREVIEW_URL }})" >> $GITHUB_STEP_SUMMARY
+      # 3. Save the ZIP file as a downloadable GitHub Artifact (No API token required!)
+      - name: Upload Zip to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-ios-simulator-app
+          path: app_preview.zip
+          retention-days: 1 # Automatically deletes from GitHub after 24 hours
